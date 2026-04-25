@@ -1,0 +1,34 @@
+[project]
+name = "tasklet-support-agent"
+version = "0.1.0"
+description = "Tasklet Support Dashboard Agent — a teaching reference for building AI agents with the Anthropic API"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40,<1.0",
+    "pydantic>=2.6,<3",
+    "streamlit>=1.30,<2",
+    "typer>=0.12",
+    "python-dotenv>=1.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+support-agent = "src.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

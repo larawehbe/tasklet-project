@@ -22,18 +22,25 @@
 # It is intentionally NOT in this file (sync: false).
 
 services:
+  # Two important deployment quirks captured here:
+  #
+  # 1. Editable install (`pip install -e .`). Without -e, the `src` package
+  #    is copied into site-packages and `__file__` inside src/db.py resolves
+  #    there — making DB_PATH point somewhere init_db never wrote. Local dev
+  #    doesn't hit this because uv defaults to editable installs.
+  #
+  # 2. init_db runs at startCommand, not buildCommand. Render's free tier
+  #    does not reliably preserve build-time writes outside of the venv into
+  #    the runtime filesystem. Running init_db at startup re-seeds the DB
+  #    inside the same filesystem the app actually reads from. Adds ~100ms
+  #    to cold starts; trivial.
   - type: web
     name: tasklet-support-agent
     runtime: python
     plan: free
     pythonVersion: "3.11"
-    # Editable install (-e) so the installed `src` package is a pointer to
-    # the project's source tree. Without -e, `__file__` inside src/db.py
-    # resolves into site-packages, which makes DB_PATH point to a path
-    # where init_db never wrote the seeded SQLite file. Local dev doesn't
-    # hit this because uv sync defaults to editable installs.
-    buildCommand: "pip install -e . && python scripts/init_db.py"
-    startCommand: "uvicorn src.api:app --host 0.0.0.0 --port $PORT"
+    buildCommand: "pip install -e ."
+    startCommand: "python scripts/init_db.py && uvicorn src.api:app --host 0.0.0.0 --port $PORT"
     healthCheckPath: /api/users
     envVars:
       - key: ANTHROPIC_API_KEY
@@ -54,13 +61,8 @@ services:
     runtime: python
     plan: free
     pythonVersion: "3.11"
-    # Editable install (-e) so the installed `src` package is a pointer to
-    # the project's source tree. Without -e, `__file__` inside src/db.py
-    # resolves into site-packages, which makes DB_PATH point to a path
-    # where init_db never wrote the seeded SQLite file. Local dev doesn't
-    # hit this because uv sync defaults to editable installs.
-    buildCommand: "pip install -e . && python scripts/init_db.py"
-    startCommand: "streamlit run src/app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableXsrfProtection false"
+    buildCommand: "pip install -e ."
+    startCommand: "python scripts/init_db.py && streamlit run src/app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableXsrfProtection false"
     healthCheckPath: /_stcore/health
     envVars:
       - key: ANTHROPIC_API_KEY

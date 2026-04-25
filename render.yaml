@@ -1,0 +1,37 @@
+# Render deployment for the FastAPI backend.
+#
+# What this does:
+#   1. pip install . — installs the project from pyproject.toml (hatchling
+#      builds the wheel; pip resolves all dependencies). The src package
+#      becomes importable, and `support-agent` is on PATH.
+#   2. python scripts/init_db.py — runs schema.sql + seed.sql once during
+#      the build, so data/tasklet.db ships with the deploy and every cold
+#      start has the same 5 users / 100 tickets to play with.
+#   3. Starts uvicorn bound to the port Render injects via $PORT.
+#
+# Free tier notes:
+#   * Sleeps after ~15 minutes idle. First request after sleep takes
+#     ~30–60s while the container wakes up.
+#   * Filesystem is ephemeral. Tickets created during runtime live until
+#     the worker restarts (sleep wake or redeploy), then the DB resets to
+#     the seeded state. For a teaching demo this is fine, even desirable.
+#   * Persistence costs $7/mo (1 GB disk). Easy to add later.
+#
+# After this service is created on Render, set the secret in the dashboard:
+#   Environment → Add Environment Variable → ANTHROPIC_API_KEY = <your key>
+# It is intentionally NOT in this file (sync: false).
+
+services:
+  - type: web
+    name: tasklet-support-agent
+    runtime: python
+    plan: free
+    pythonVersion: "3.11"
+    buildCommand: "pip install . && python scripts/init_db.py"
+    startCommand: "uvicorn src.api:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /api/users
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

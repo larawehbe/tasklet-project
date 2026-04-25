@@ -35,3 +35,25 @@ services:
         sync: false
       - key: PYTHONUNBUFFERED
         value: "1"
+
+  # Streamlit UI as its own Render service. Independent from the FastAPI
+  # service above — each has its own seeded SQLite, so tickets created in
+  # one demo don't appear in the other. Fine for a teaching demo.
+  #
+  # --server.headless true skips Streamlit's first-run "enter your email"
+  # prompt that would otherwise hang the start command.
+  # --server.enableXsrfProtection false because Render's load balancer
+  # injects headers that Streamlit's default XSRF check rejects.
+  - type: web
+    name: tasklet-streamlit
+    runtime: python
+    plan: free
+    pythonVersion: "3.11"
+    buildCommand: "pip install . && python scripts/init_db.py"
+    startCommand: "streamlit run src/app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableXsrfProtection false"
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"

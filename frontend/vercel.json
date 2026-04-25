@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "http://69.62.118.178/api/:path*"
+      "destination": "https://tasklit-api.duckdns.org/api/:path*"
     }
   ]
 }

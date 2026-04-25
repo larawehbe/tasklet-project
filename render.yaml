@@ -27,7 +27,12 @@ services:
     runtime: python
     plan: free
     pythonVersion: "3.11"
-    buildCommand: "pip install . && python scripts/init_db.py"
+    # Editable install (-e) so the installed `src` package is a pointer to
+    # the project's source tree. Without -e, `__file__` inside src/db.py
+    # resolves into site-packages, which makes DB_PATH point to a path
+    # where init_db never wrote the seeded SQLite file. Local dev doesn't
+    # hit this because uv sync defaults to editable installs.
+    buildCommand: "pip install -e . && python scripts/init_db.py"
     startCommand: "uvicorn src.api:app --host 0.0.0.0 --port $PORT"
     healthCheckPath: /api/users
     envVars:
@@ -49,7 +54,12 @@ services:
     runtime: python
     plan: free
     pythonVersion: "3.11"
-    buildCommand: "pip install . && python scripts/init_db.py"
+    # Editable install (-e) so the installed `src` package is a pointer to
+    # the project's source tree. Without -e, `__file__` inside src/db.py
+    # resolves into site-packages, which makes DB_PATH point to a path
+    # where init_db never wrote the seeded SQLite file. Local dev doesn't
+    # hit this because uv sync defaults to editable installs.
+    buildCommand: "pip install -e . && python scripts/init_db.py"
     startCommand: "streamlit run src/app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableXsrfProtection false"
     healthCheckPath: /_stcore/health
     envVars:

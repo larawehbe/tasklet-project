@@ -8,7 +8,6 @@ dependencies = [
     "anthropic>=0.40,<1.0",
     "pydantic>=2.6,<3",
     "streamlit>=1.30,<2",
-    "typer>=0.12",
     "python-dotenv>=1.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -18,9 +17,6 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
-
-[project.scripts]
-support-agent = "src.cli:app"
 
 [build-system]
 requires = ["hatchling"]

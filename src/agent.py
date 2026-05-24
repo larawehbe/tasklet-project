@@ -28,11 +28,45 @@ from pydantic import BaseModel
 
 from src.conversation import Conversation
 from src.models import AgentMessage, ToolResult, ToolUse
-from src.prompts import MODEL, SYSTEM_PROMPT
+from src.prompts import MODEL, SUMMARY_PROMPT, SYSTEM_PROMPT
 from src.tools import TOOL_SCHEMAS, dispatch
 
 MAX_TOKENS = 1024
 MAX_TOOL_CALLS = 5
+SUMMARY_THRESHOLD = 20   # summarize when conversation exceeds this many messages
+SUMMARY_KEEP_RECENT = 6  # number of recent messages to keep verbatim
+
+
+def _format_messages_as_text(messages: list[dict]) -> str:
+    """Render Anthropic-format messages as plain text for the summarizer."""
+    lines = []
+    for m in messages:
+        role = m["role"].upper()
+        content = m["content"]
+        if isinstance(content, str):
+            lines.append(f"{role}: {content}")
+        elif isinstance(content, list):
+            for block in content:
+                t = block.get("type", "")
+                if t == "text":
+                    lines.append(f"{role}: {block['text']}")
+                elif t == "tool_use":
+                    lines.append(f"{role}: [called {block['name']}]")
+                elif t == "tool_result":
+                    lines.append(f"{role}: [tool result: {block.get('content', '')}]")
+    return "\n".join(lines)
+
+
+def _summarize_old_turns(client: Anthropic, old_messages: list[dict]) -> str:
+    """Ask Claude to summarize older turns so they fit in a compact context note."""
+    conversation_text = _format_messages_as_text(old_messages)
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=256,
+        system=SUMMARY_PROMPT,
+        messages=[{"role": "user", "content": conversation_text}],
+    )
+    return response.content[0].text
 
 
 class AgentTurnResult(BaseModel):
@@ -57,6 +91,14 @@ def run_turn(
     """
     conversation.append(AgentMessage(role="user", content=user_input))
 
+    # If the history has grown long, summarize the older turns once before
+    # entering the loop. The summary travels with every API call this turn,
+    # replacing the old turns with a compact context note.
+    summary: str | None = None
+    if len(conversation.messages) > SUMMARY_THRESHOLD:
+        old = conversation.to_anthropic_messages()[:-SUMMARY_KEEP_RECENT]
+        summary = _summarize_old_turns(client, old)
+
     tool_call_count = 0
 
     while True:
@@ -65,7 +107,9 @@ def run_turn(
             max_tokens=MAX_TOKENS,
             system=SYSTEM_PROMPT,
             tools=TOOL_SCHEMAS,
-            messages=conversation.to_anthropic_messages(),
+            messages=conversation.to_anthropic_messages(
+                summary=summary, keep_recent=SUMMARY_KEEP_RECENT
+            ),
         )
 
         text_parts: list[str] = []

@@ -14,6 +14,7 @@ demo walkthrough in the README.
 
 from src import agent
 from src.conversation import Conversation
+from src.models import AgentMessage
 
 
 class _Block:
@@ -126,3 +127,62 @@ def test_run_turn_executes_one_tool_then_finishes(conn, seed_tickets):
     assert len(conv.messages) == 4
     assert conv.messages[2].role == "tool"
     assert conv.messages[2].tool_result.is_error is False
+
+
+def test_summary_not_triggered_below_threshold(conn, seed_users):
+    """With fewer messages than SUMMARY_THRESHOLD, only one Claude call is made."""
+    call_count = 0
+
+    def make_response(_kw):
+        nonlocal call_count
+        call_count += 1
+        return _Response(
+            content=[_Block(type="text", text="Hi there.")],
+            stop_reason="end_turn",
+        )
+
+    fake = FakeClient.__new__(FakeClient)
+    fake.messages = _Messages(make_response)
+
+    conv = Conversation.load_or_create(conn, user_id=1)
+    agent.run_turn(client=fake, conn=conn, conversation=conv, user_input="hello")
+
+    assert call_count == 1
+
+
+def test_summary_triggered_when_threshold_exceeded(conn, seed_users):
+    """When message count exceeds SUMMARY_THRESHOLD, two Claude calls are made:
+    one to summarize the old turns, then one for the actual agent response."""
+    conv = Conversation.load_or_create(conn, user_id=1)
+
+    # Pack the conversation past the threshold with alternating user/assistant messages.
+    for i in range(agent.SUMMARY_THRESHOLD):
+        role = "user" if i % 2 == 0 else "assistant"
+        conv.append(AgentMessage(role=role, content=f"message {i}"))
+
+    call_count = 0
+
+    def make_response(_kw):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First call: the summarization request
+            return _Response(
+                content=[_Block(type="text", text="Summary of earlier conversation.")],
+                stop_reason="end_turn",
+            )
+        # Second call: the main agent turn
+        return _Response(
+            content=[_Block(type="text", text="How can I help you today?")],
+            stop_reason="end_turn",
+        )
+
+    fake = FakeClient.__new__(FakeClient)
+    fake.messages = _Messages(make_response)
+
+    result = agent.run_turn(
+        client=fake, conn=conn, conversation=conv, user_input="hello again"
+    )
+
+    assert call_count == 2
+    assert result.final_text == "How can I help you today?"

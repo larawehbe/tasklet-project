@@ -68,20 +68,22 @@ The suite has no live API calls — `tests/test_agent.py` mocks the Anthropic cl
 The agent is implemented in [src/agent.py](src/agent.py) and is small enough to read in one sitting:
 
 1. Append the user's message to the conversation.
-2. Call Claude with the full message history, the tool schemas, and the system prompt.
-3. If the response is text only — done, return it to the user.
-4. If the response includes a `tool_use` block — execute the tool, append the result, loop back to step 2.
-5. Cap at 5 tool calls per turn to prevent runaway behavior.
+2. If the conversation exceeds `SUMMARY_THRESHOLD` messages, call Claude once to summarize the older turns into a single paragraph. Keep the most recent `SUMMARY_KEEP_RECENT` messages verbatim.
+3. Call Claude with the message history (or summary + recent messages), the tool schemas, and the system prompt.
+4. If the response is text only — done, return it to the user.
+5. If the response includes a `tool_use` block — execute the tool, append the result, loop back to step 3.
+6. Cap at 5 tool calls per turn to prevent runaway behavior.
 
 The system prompt instructs Claude to issue at most one tool call per turn (sequential mode), so the loop iterates linearly: text → tool → result → text → tool → result ... until Claude is done.
 
-### The three tools
+### The four tools
 
-| Tool                | Purpose                                                                                       |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| `create_ticket`     | File a new ticket. Asks clarifying questions (in plain text) if any required field is missing. |
-| `list_tickets`      | Return the user's tickets, optionally filtered by status, category, priority, or date range. |
-| `get_ticket_by_id`  | Look up one ticket by id. Returns "not found" if it doesn't exist or belongs to another user. |
+| Tool                    | Purpose                                                                                       |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| `create_ticket`         | File a new ticket. Asks clarifying questions (in plain text) if any required field is missing. |
+| `list_tickets`          | Return the user's tickets, optionally filtered by status, category, priority, or date range. |
+| `get_ticket_by_id`      | Look up one ticket by id. Returns "not found" if it doesn't exist or belongs to another user. |
+| `update_ticket_status`  | Change the status of a ticket the user owns. Returns "not updated" for unknown or cross-user ids. |
 
 The LLM picks among them based on the system prompt and tool descriptions in [src/tools.py](src/tools.py). Those descriptions are some of the most behavior-influential code in the whole app — when you tweak how the agent acts, you are usually tweaking those, not the algorithm.
 
@@ -127,9 +129,11 @@ After `init-db`, run:
 5. **Lookup of someone else's ticket**: `what about ticket 50?` (user 1 owns ids 1–20) — should report not found.
 6. **Create with full info**: `Open a high priority bug: dashboard crashes on Firefox 130 when I open the sprint board` — should call `create_ticket` directly.
 7. **Create with missing info**: `I want to file a ticket about my invoice` — should ask for more details before calling the tool.
-8. **Refuse modification**: `delete ticket 1` — should refuse politely.
-9. **Refuse out-of-scope**: `email this to support` — should say it cannot, suggest the web app.
-10. **Ambiguous reference**: `what about that one?` (with no prior context) — should ask which ticket.
+8. **Update status**: `mark ticket 1 as resolved` — should call `update_ticket_status(ticket_id=1, status="resolved")` and confirm.
+9. **Update wrong user**: `close ticket 50` (user 1 doesn't own ticket 50) — should report the ticket was not found.
+10. **Refuse modification**: `delete ticket 1` — should refuse politely and suggest the web app.
+11. **Refuse out-of-scope**: `email this to support` — should say it cannot, suggest the web app.
+12. **Ambiguous reference**: `what about that one?` (with no prior context) — should ask which ticket.
 
 The same flow works in the Streamlit UI — flip "Logged in as" to a different user mid-session to verify isolation.
 
@@ -168,7 +172,6 @@ The same flow works in the Streamlit UI — flip "Logged in as" to a different u
 The current code is a teaching reference, not a production deployment. Things you would add for production:
 
 - **Prompt caching.** Mark the system prompt and tool schemas as `cache_control={"type": "ephemeral"}` in the API call. ~90% cost reduction on multi-turn sessions. See the Anthropic docs for prompt caching.
-- **Conversation history compaction.** Long sessions will eventually exceed the context window. In production you would summarize older turns and keep a sliding window of recent ones.
 - **Token-budget enforcement.** Track cumulative input/output tokens per session and fail gracefully when hitting an org-level cap.
 - **Structured logging + tracing.** See the Observability section above.
 - **Real authentication.** The user dropdown in Streamlit is a demo affordance; in production you would integrate with whatever IdP your SaaS uses.

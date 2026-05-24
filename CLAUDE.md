@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A teaching reference implementation of a multi-turn AI support agent, built for a paid course aimed at software engineers learning to build agents on the Anthropic API. The codebase is the primary teaching artifact — a student should be able to read any file top-to-bottom and understand it.
 
-The agent files three tools — `create_ticket`, `list_tickets`, `get_ticket_by_id` — for the fictional SaaS "Tasklet". One Python core, three UIs (CLI, Streamlit, React via FastAPI).
+The agent exposes four tools — `create_ticket`, `list_tickets`, `get_ticket_by_id`, `update_ticket_status` — for the fictional SaaS "Tasklet". One Python core, three UIs (CLI, Streamlit, React via FastAPI).
 
 ## Common commands
 
@@ -25,7 +25,7 @@ uv run python -m uvicorn src.api:app --reload --port 8000   # FastAPI backend
 ( cd frontend && npm install && npm run dev )          # React dashboard (port 5173)
 
 # tests
-uv run pytest                                          # all 45 tests
+uv run pytest                                          # all 46 tests
 uv run pytest -k security                              # just the security tests
 uv run pytest tests/test_agent.py::test_run_turn_caps_tool_calls   # one test
 ```
@@ -38,14 +38,14 @@ The agent core is a small set of Python modules. Three UIs drive the same core; 
 
 ```
             CLI (cli.py) ──┐
-       Streamlit (app.py) ─┼──> agent.run_turn ──> tools.dispatch ──> {ticket,query}_service ──> sqlite
+       Streamlit (app.py) ─┼──> agent.run_turn ──> tools.dispatch ──> {ticket_service,query_service} ──> sqlite
        React (api.py + frontend/)
 ```
 
-- **agent.py** owns the loop: append user message → call Claude → if tool_use, dispatch and append result, loop → return final text. Hard cap of 5 tool calls per turn.
+- **agent.py** owns the loop: append user message → if history exceeds `SUMMARY_THRESHOLD`, summarize old turns via a separate Claude call → call Claude with (summary + recent messages) or full history → if tool_use, dispatch and append result, loop → return final text. Hard cap of 5 tool calls per turn.
 - **tools.py** owns *both* the JSON tool schemas Claude sees and the `dispatch()` function that routes a `ToolUse` to the right service. Tool descriptions in this file are some of the most behavior-influential prompts in the system — when changing agent behavior, edit them before touching code.
-- **conversation.py** owns persistence and the conversion between our internal three-role message log (`user`/`assistant`/`tool`) and Anthropic's two-role API shape. The `tool` role collapses to `user` + `tool_result` block at the API boundary.
-- **prompts.py** holds `MODEL` and `SYSTEM_PROMPT`. The model id is pinned (`claude-sonnet-4-6`) — update it deliberately, not via "-latest" aliases.
+- **conversation.py** owns persistence and the conversion between our internal three-role message log (`user`/`assistant`/`tool`) and Anthropic's two-role API shape. The `tool` role collapses to `user` + `tool_result` block at the API boundary. `to_anthropic_messages(summary, keep_recent)` accepts an optional summary string — when provided it replaces all but the most recent messages with a single context note.
+- **prompts.py** holds `MODEL`, `SYSTEM_PROMPT`, and `SUMMARY_PROMPT`. The model id is pinned (`claude-sonnet-4-6`) — update it deliberately, not via "-latest" aliases.
 - **api.py** is a *thin* FastAPI wrapper. It must not contain agent logic. If you find yourself adding business logic here, it belongs in agent.py / tools.py / a service.
 
 ### The security invariant
@@ -56,8 +56,9 @@ This is the single most important rule in the codebase, and it spans multiple fi
 2. `dispatch()` never reads `user_id` from `tool_use.input` — it uses the `user_id` parameter the caller passed in. Pydantic v2's default `extra="ignore"` also drops a stray `user_id` field, but dispatch is the load-bearing layer.
 3. Every function in [src/ticket_service.py](src/ticket_service.py) and [src/query_service.py](src/query_service.py) takes `user_id` as the **first required parameter**. There is no overload that accepts only a `ticket_id`. Do not add one.
 4. `get_ticket_by_id` returns the same `None` whether the ticket doesn't exist OR belongs to another user. Do not "improve" the error message — the indistinguishability is intentional, to prevent existence leaks.
+5. `update_ticket_status` applies the same rule: the `WHERE` clause in the UPDATE scopes by both `id` and `user_id`. A cross-user update attempt silently does nothing and returns `{"updated": false}` — indistinguishable from a missing ticket.
 
-The three SECURITY-labeled tests in [tests/test_tool_dispatch.py](tests/test_tool_dispatch.py) prove (1)–(3). Do not delete or weaken them.
+The SECURITY-labeled tests in [tests/test_tool_dispatch.py](tests/test_tool_dispatch.py) prove (1)–(3) for all tools including `update_ticket_status`. Do not delete or weaken them.
 
 ## Hard constraints
 
@@ -67,7 +68,7 @@ These are pedagogical decisions, not historical accidents. Do not "modernize" pa
 - **No ORM.** Raw `sqlite3` with parameterized SQL only. Students must see the SQL and the security model.
 - **No LLM-generated SQL.** The LLM picks among pre-defined query functions via tool use. Adding a "free-form query" tool is a regression.
 - **Sequential tool use.** The system prompt instructs Claude to issue one tool call per turn; the agent loop handles the general case defensively. Do not "optimize" by encouraging parallel tool calls.
-- **Three tools, no more.** `create_ticket`, `list_tickets`, `get_ticket_by_id`. Adding `update_ticket` or `delete_ticket` requires explicit user approval — refusal of those is part of the agent's specified behavior.
+- **Four tools, no more.** `create_ticket`, `list_tickets`, `get_ticket_by_id`, `update_ticket_status`. Adding `delete_ticket` or free-form update tools (title, description, priority) requires explicit user approval — refusal of those is part of the agent's specified behavior. `update_ticket_status` is intentionally scoped to status only.
 - **No mocking the database in tests.** Tests use an in-memory SQLite from the same `schema.sql`. Real DB behavior, no mock-vs-prod drift.
 
 ## Things that look wrong but aren't
@@ -78,9 +79,11 @@ These are pedagogical decisions, not historical accidents. Do not "modernize" pa
 - **CHECK constraints duplicate the Pydantic enums.** Defense in depth, on purpose.
 - **Tailwind via CDN** in [frontend/index.html](frontend/index.html) is a pedagogical shortcut, not a missing build step. The course treats the React dashboard as a "ship a real frontend without knowing the framework" demo, so build setup is intentionally minimal.
 - **`agent.run_turn` re-prompts even when Claude returns text + tool_use simultaneously.** This is correct: if there are tool_uses, the loop runs them and continues; the text from that turn is preserved in the assistant message.
+- **`load_dotenv()` is called in `main()` in [src/cli.py](src/cli.py)**, not at module level. This matches how `app.py` and `api.py` load it — at the entry point, not as a side effect of import. The `.env` file must exist with `ANTHROPIC_API_KEY` set; the SDK will raise `TypeError` at request time if it is missing.
 
 ## Testing notes
 
-- 45 tests, no live API calls. [tests/test_agent.py](tests/test_agent.py) uses a tiny ducktyped fake Anthropic client — keep it tiny so students can read it.
+- 46 tests, no live API calls. [tests/test_agent.py](tests/test_agent.py) uses a tiny ducktyped fake Anthropic client — keep it tiny so students can read it.
 - [tests/conftest.py](tests/conftest.py) provides an in-memory `conn` fixture, plus `seed_users` and `seed_tickets` (a 7-ticket controlled dataset, distinct from `data/seed.sql`'s 100-ticket demo data).
+- [tests/test_tool_dispatch.py](tests/test_tool_dispatch.py) covers routing and security for all four tools. The SECURITY-labeled tests are the machine-checkable proof of the security invariant — do not delete or weaken them.
 - Routing behavior (does Claude pick the right tool for a given prompt?) is verified interactively via the demo walkthrough in [README.md](README.md), not in pytest. Do not add a test that requires a live API key to CI.

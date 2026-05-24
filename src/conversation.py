@@ -99,8 +99,9 @@ class Conversation:
 
     # ---------- API serialization ----------
 
-    def to_anthropic_messages(self) -> list[dict]:
-        """Convert our message log to the shape the Anthropic API expects.
+    @staticmethod
+    def _to_anthropic(messages: list[AgentMessage]) -> list[dict]:
+        """Convert a list of AgentMessages to the shape the Anthropic API expects.
 
         Anthropic uses two roles only: 'user' and 'assistant'. Tool results
         are sent as a 'user'-role message containing one or more tool_result
@@ -109,7 +110,7 @@ class Conversation:
         Anthropic SDK's, and it is small on purpose.
         """
         result: list[dict] = []
-        for msg in self.messages:
+        for msg in messages:
             if msg.role == "user":
                 result.append({"role": "user", "content": msg.content or ""})
             elif msg.role == "tool":
@@ -143,3 +144,28 @@ class Conversation:
                     )
                 result.append({"role": "assistant", "content": blocks})
         return result
+
+    def to_anthropic_messages(
+        self,
+        summary: str | None = None,
+        keep_recent: int | None = None,
+    ) -> list[dict]:
+        """Return the message history in Anthropic API format.
+
+        When `summary` and `keep_recent` are provided, the older turns are
+        replaced by a single user-role context note so the API call stays
+        within a manageable token budget. The full history is still in the DB.
+        """
+        if summary is not None and keep_recent is not None:
+            recent = self.messages[-keep_recent:]
+            # The summary prefix is a user-role message. The Anthropic API
+            # requires strict user/assistant alternation, so the first message
+            # in recent must be assistant. Trim any leading user/tool messages
+            # to guarantee a valid sequence.
+            while recent and recent[0].role != "assistant":
+                recent = recent[1:]
+            prefix = [
+                {"role": "user", "content": f"[Earlier conversation summary: {summary}]"}
+            ]
+            return prefix + self._to_anthropic(recent)
+        return self._to_anthropic(self.messages)

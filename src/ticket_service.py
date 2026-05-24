@@ -16,7 +16,7 @@ is impossible to write a query that forgets to scope.
 
 import sqlite3
 
-from src.models import Ticket, TicketCreate
+from src.models import Status, Ticket, TicketCreate
 
 
 def create_ticket(
@@ -43,3 +43,30 @@ def create_ticket(
         (new_id,),
     ).fetchone()
     return Ticket(**dict(row))
+
+
+def update_ticket_status(
+    conn: sqlite3.Connection, user_id: int, ticket_id: int, status: Status
+) -> Ticket | None:
+    """Update the status of a ticket owned by user_id.
+
+    Returns the updated Ticket, or None if the ticket does not exist OR belongs
+    to a different user — the same indistinguishability as get_ticket_by_id, to
+    prevent existence leaks.
+
+    user_id is the FIRST required parameter — consistent with every other
+    function that touches the tickets table in this codebase.
+    """
+    conn.execute(
+        "UPDATE tickets SET status = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND user_id = ?",
+        (status.value, ticket_id, user_id),
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT id, user_id, title, description, category, priority, status, "
+        "       created_at, updated_at "
+        "FROM tickets WHERE id = ? AND user_id = ?",
+        (ticket_id, user_id),
+    ).fetchone()
+    return Ticket(**dict(row)) if row else None

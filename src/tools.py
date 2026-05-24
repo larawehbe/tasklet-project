@@ -28,11 +28,12 @@ from pydantic import ValidationError
 from src.models import (
     QueryFilters,
     TicketCreate,
+    TicketStatusUpdate,
     ToolResult,
     ToolUse,
 )
 from src.query_service import get_ticket_by_id, list_tickets
-from src.ticket_service import create_ticket
+from src.ticket_service import create_ticket, update_ticket_status
 
 TOOL_SCHEMAS: list[dict] = [
     {
@@ -158,6 +159,47 @@ TOOL_SCHEMAS: list[dict] = [
         },
     },
     {
+        "name": "update_ticket_status",
+        "description": (
+            "Update the status of a ticket owned by the current user. "
+            "Use this when the user explicitly asks to change a ticket's status — "
+            "e.g., 'mark ticket 42 as resolved', 'close ticket 7', 'reopen ticket 3'. "
+            "Only status can be changed; title, description, priority, and category "
+            "cannot be modified through this tool. "
+            "If the ticket id is ambiguous, ask the user to confirm before calling. "
+            "Results are automatically scoped to the current user — you cannot update "
+            "a ticket belonging to someone else."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The numeric id of the ticket to update.",
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "open",
+                        "in_progress",
+                        "waiting_on_customer",
+                        "resolved",
+                        "closed",
+                    ],
+                    "description": (
+                        "The new status to set. "
+                        "open: ticket is active and unassigned; "
+                        "in_progress: being worked on; "
+                        "waiting_on_customer: blocked on user response; "
+                        "resolved: fix applied, pending confirmation; "
+                        "closed: fully done."
+                    ),
+                },
+            },
+            "required": ["ticket_id", "status"],
+        },
+    },
+    {
         "name": "get_ticket_by_id",
         "description": (
             "Look up one specific ticket by its numeric id. "
@@ -224,6 +266,19 @@ def dispatch(
             return _ok(
                 tool_use.id,
                 {"found": True, "ticket": ticket.model_dump(mode="json")},
+            )
+
+        if name == "update_ticket_status":
+            update = TicketStatusUpdate(**raw_input)
+            ticket = update_ticket_status(conn, user_id, update.ticket_id, update.status)
+            if ticket is None:
+                return _ok(
+                    tool_use.id,
+                    {"updated": False, "ticket_id": update.ticket_id},
+                )
+            return _ok(
+                tool_use.id,
+                {"updated": True, "ticket": ticket.model_dump(mode="json")},
             )
 
         return _err(tool_use.id, f"Unknown tool: {name!r}")

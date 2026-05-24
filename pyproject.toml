@@ -18,6 +18,9 @@ dev = [
     "pytest>=8.0",
 ]
 
+[project.scripts]
+support-agent = "src.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

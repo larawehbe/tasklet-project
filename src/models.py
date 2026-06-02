@@ -84,6 +84,13 @@ class QueryFilters(BaseModel):
     limit: Optional[int] = Field(default=None, ge=1, le=500)
 
 
+class TicketStatusUpdate(BaseModel):
+    """Tool input for update_ticket_status. The LLM supplies the ticket to update and its new status."""
+
+    ticket_id: int
+    new_status: Status
+
+
 class ToolUse(BaseModel):
     """A single tool invocation emitted by the assistant."""
 

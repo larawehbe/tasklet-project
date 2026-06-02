@@ -9,3 +9,5 @@ data/tasklet.db
 dist/
 build/
 .uv-cache/
+data/chroma/
+.DS_Store

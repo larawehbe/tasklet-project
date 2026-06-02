@@ -1,4 +1,4 @@
-"""Ticket creation. The only write path in this app.
+"""Ticket write paths for the Tasklet support agent.
 
 `create_ticket` is the implementation behind the LLM tool of the same name.
 It accepts an authenticated `user_id` (always passed in by the caller, never
@@ -16,7 +16,7 @@ is impossible to write a query that forgets to scope.
 
 import sqlite3
 
-from src.models import Ticket, TicketCreate
+from src.models import Status, Ticket, TicketCreate
 
 
 def create_ticket(
@@ -41,5 +41,36 @@ def create_ticket(
         "       created_at, updated_at "
         "FROM tickets WHERE id = ?",
         (new_id,),
+    ).fetchone()
+    return Ticket(**dict(row))
+
+
+def update_ticket_status(
+    conn: sqlite3.Connection,
+    user_id: int,
+    ticket_id: int,
+    new_status: Status,
+) -> Ticket | None:
+    """Second write path in the app. Follows the same user_id-first scoping as
+    create_ticket: the UPDATE filters on both user_id AND ticket_id, so a user
+    can never modify another user's ticket. Returns None if no row was updated
+    (wrong user or ticket does not exist — intentionally indistinguishable).
+    On success, re-SELECTs and returns the fully-populated Ticket.
+    """
+    cursor = conn.execute(
+        "UPDATE tickets SET status = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ? AND user_id = ?",
+        (new_status.value, ticket_id, user_id),
+    )
+    conn.commit()
+
+    if cursor.rowcount == 0:
+        return None
+
+    row = conn.execute(
+        "SELECT id, user_id, title, description, category, priority, status, "
+        "       created_at, updated_at "
+        "FROM tickets WHERE id = ?",
+        (ticket_id,),
     ).fetchone()
     return Ticket(**dict(row))

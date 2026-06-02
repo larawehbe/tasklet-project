@@ -9,6 +9,7 @@ The "Tasklet" support agent is a multi-turn conversational assistant for a ficti
 - Pre-defined query functions chosen by the LLM (no LLM-generated SQL)
 - Multi-turn conversation state managed explicitly, persisted to SQLite
 - Raw parameterized SQL via Python's `sqlite3` module — no ORM
+- RAG-powered knowledge base: product docs embedded locally, searched via ChromaDB
 
 ## Quickstart
 
@@ -75,13 +76,15 @@ The agent is implemented in [src/agent.py](src/agent.py) and is small enough to 
 
 The system prompt instructs Claude to issue at most one tool call per turn (sequential mode), so the loop iterates linearly: text → tool → result → text → tool → result ... until Claude is done.
 
-### The three tools
+### The five tools
 
-| Tool                | Purpose                                                                                       |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| `create_ticket`     | File a new ticket. Asks clarifying questions (in plain text) if any required field is missing. |
-| `list_tickets`      | Return the user's tickets, optionally filtered by status, category, priority, or date range. |
-| `get_ticket_by_id`  | Look up one ticket by id. Returns "not found" if it doesn't exist or belongs to another user. |
+| Tool                    | Purpose                                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------------------------- |
+| `create_ticket`         | File a new ticket. Asks clarifying questions (in plain text) if any required field is missing. |
+| `list_tickets`          | Return the user's tickets, optionally filtered by status, category, priority, or date range.  |
+| `get_ticket_by_id`      | Look up one ticket by id. Returns "not found" if it doesn't exist or belongs to another user. |
+| `update_ticket_status`  | Change the status of an existing ticket (open → in_progress → resolved → closed, etc.).       |
+| `search_knowledge_base` | Semantic search over Tasklet's help articles. Used for how-to questions about product features.|
 
 The LLM picks among them based on the system prompt and tool descriptions in [src/tools.py](src/tools.py). Those descriptions are some of the most behavior-influential code in the whole app — when you tweak how the agent acts, you are usually tweaking those, not the algorithm.
 
@@ -89,8 +92,8 @@ The LLM picks among them based on the system prompt and tool descriptions in [sr
 
 Three layers of defense, all tested:
 
-1. **The LLM never sees `user_id` in any tool schema.** It is not an input parameter to any of the three tools. The LLM cannot ask for it.
-2. **`dispatch()` ignores any `user_id` the LLM tries to inject.** Every service call uses the authenticated `user_id` parameter the dispatch function received. Pydantic v2's default `extra="ignore"` would already drop a stray `user_id`, but `dispatch()` also never references it directly — defense in depth. See [tests/test_tool_dispatch.py](tests/test_tool_dispatch.py) for the proofs.
+1. **The LLM never sees `user_id` in any tool schema.** It is not an input parameter to any tool. The LLM cannot ask for it.
+2. **`dispatch()` ignores any `user_id` the LLM tries to inject.** Every service call uses the authenticated `user_id` parameter the dispatch function received. Pydantic v2's default `extra="ignore"` would already drop a stray `user_id`, but `dispatch()` also never references it directly — defense in depth. See [tests/test_query_service.py](tests/test_query_service.py) for the proofs.
 3. **The service layer takes `user_id` as the first required parameter on every read and write.** There is no overload that takes only a `ticket_id`. It is impossible to write a query that crosses tenant boundaries by accident.
 
 `get_ticket_by_id` returns the same `found: false` response whether the ticket doesn't exist OR belongs to another user. This avoids leaking existence information.
@@ -127,9 +130,12 @@ After `init-db`, run:
 5. **Lookup of someone else's ticket**: `what about ticket 50?` (user 1 owns ids 1–20) — should report not found.
 6. **Create with full info**: `Open a high priority bug: dashboard crashes on Firefox 130 when I open the sprint board` — should call `create_ticket` directly.
 7. **Create with missing info**: `I want to file a ticket about my invoice` — should ask for more details before calling the tool.
-8. **Refuse modification**: `delete ticket 1` — should refuse politely.
-9. **Refuse out-of-scope**: `email this to support` — should say it cannot, suggest the web app.
-10. **Ambiguous reference**: `what about that one?` (with no prior context) — should ask which ticket.
+8. **Status update**: `mark ticket 1 as resolved` — should confirm the ticket id and new status, then call `update_ticket_status`.
+9. **Knowledge base — how-to**: `how do I connect Jira?` — should call `search_knowledge_base` and answer from the docs, not file a ticket.
+10. **Knowledge base — policy**: `what's the refund policy?` — should search the billing article and summarize it.
+11. **Refuse modification**: `delete ticket 1` — should refuse politely.
+12. **Refuse out-of-scope**: `email this to support` — should say it cannot, suggest the web app.
+13. **Ambiguous reference**: `what about that one?` (with no prior context) — should ask which ticket.
 
 The same flow works in the Streamlit UI — flip "Logged in as" to a different user mid-session to verify isolation.
 
@@ -138,30 +144,37 @@ The same flow works in the Streamlit UI — flip "Logged in as" to a different u
     .
     ├── pyproject.toml
     ├── README.md
+    ├── render.yaml                    # Render deployment (FastAPI + Streamlit services)
     ├── data/
     │   ├── schema.sql                 # CREATE TABLE statements
     │   ├── seed.sql                   # 5 users, 100 tickets
-    │   └── tasklet.db                 # gitignored, created by init-db
+    │   ├── tasklet.db                 # gitignored, created by init-db
+    │   ├── knowledge/                 # markdown help articles (18 files)
+    │   └── chroma/                    # pre-built ChromaDB index (committed)
     ├── src/
     │   ├── models.py                  # Pydantic models — input contracts
     │   ├── db.py                      # connection management + init
-    │   ├── ticket_service.py          # create_ticket
+    │   ├── ticket_service.py          # create_ticket, update_ticket_status
     │   ├── query_service.py           # list_tickets, get_ticket_by_id
+    │   ├── knowledge_service.py       # build_index() + search() — RAG pipeline
     │   ├── tools.py                   # tool schemas + dispatch
     │   ├── prompts.py                 # system prompt, model id
     │   ├── conversation.py            # Conversation class with persistence
     │   ├── agent.py                   # the agent loop
-    │   ├── cli.py                     # Typer CLI (`support-agent ...`)
-    │   └── app.py                     # Streamlit UI
+    │   ├── cli.py                     # argparse CLI (`support-agent ...`)
+    │   ├── app.py                     # Streamlit UI
+    │   └── api.py                     # FastAPI backend for the React dashboard
+    ├── frontend/                      # React + Vite dashboard
     ├── tests/
     │   ├── conftest.py                # in-memory DB fixtures
     │   ├── test_ticket_service.py
-    │   ├── test_query_service.py
-    │   ├── test_tool_dispatch.py      # routing + 3 SECURITY tests
+    │   ├── test_query_service.py      # query functions + 3 SECURITY tests
+    │   ├── test_knowledge_service.py  # chunking, indexing, search, dispatch
     │   ├── test_conversation.py
     │   └── test_agent.py              # agent loop with mocked Anthropic client
     └── scripts/
-        └── init_db.py                 # equivalent to `support-agent init-db`
+        ├── init_db.py                 # equivalent to `support-agent init-db`
+        └── build_knowledge_base.py    # rebuild ChromaDB index from data/knowledge/
 
 ## Future improvements (intentionally not implemented)
 

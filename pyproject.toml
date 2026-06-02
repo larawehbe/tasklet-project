@@ -11,12 +11,17 @@ dependencies = [
     "python-dotenv>=1.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "chromadb>=1.5.9",
+    "sentence-transformers>=5.5.1",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
 ]
+
+[project.scripts]
+support-agent = "src.cli:main"
 
 [build-system]
 requires = ["hatchling"]

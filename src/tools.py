@@ -31,6 +31,7 @@ from src.models import (
     TicketStatusUpdate,
     ToolResult,
     ToolUse,
+    User,
 )
 from src.query_service import get_ticket_by_id, list_tickets
 from src.ticket_service import TicketAccessDenied, create_ticket, update_ticket_status
@@ -213,14 +214,19 @@ TOOL_SCHEMAS: list[dict] = [
 
 
 def dispatch(
-    conn: sqlite3.Connection, user_id: int, tool_use: ToolUse
+    conn: sqlite3.Connection, user: User, tool_use: ToolUse
 ) -> ToolResult:
     """Execute the named tool and return a ToolResult to feed back to the LLM.
 
-    The user_id parameter is the authenticated user's id. This function NEVER
-    reads user_id from tool_use.input — even if the LLM tries to pass one,
-    it is ignored. Tests prove this.
+    `user` is the authenticated User object from the caller (CLI, Streamlit,
+    or API). This function NEVER reads user_id or is_admin from tool_use.input
+    — even if the LLM tries to pass them, they are ignored. Pydantic v2's
+    default extra="ignore" drops stray fields on model validation, and dispatch
+    never references the raw input for identity or privilege either way. Tests
+    in tests/test_tool_dispatch.py prove this.
     """
+    user_id = user.id
+    is_admin = user.is_admin
     name = tool_use.name
     raw_input = tool_use.input
 
@@ -232,7 +238,7 @@ def dispatch(
 
         if name == "list_tickets":
             filters = QueryFilters(**raw_input)
-            tickets = list_tickets(conn, user_id, filters)
+            tickets = list_tickets(conn, user_id, filters, is_admin=is_admin)
             return _ok(
                 tool_use.id,
                 {
@@ -248,7 +254,7 @@ def dispatch(
                     tool_use.id,
                     "ticket_id is required and must be an integer.",
                 )
-            ticket = get_ticket_by_id(conn, user_id, ticket_id)
+            ticket = get_ticket_by_id(conn, user_id, ticket_id, is_admin=is_admin)
             if ticket is None:
                 return _ok(
                     tool_use.id,
@@ -292,12 +298,12 @@ def dispatch(
         return _err(tool_use.id, f"Database error: {type(e).__name__}")
 
 
-    def _ok(tool_use_id: str, payload: object) -> ToolResult:
-        return ToolResult(
-            tool_use_id=tool_use_id,
-            content=json.dumps(payload),
-            is_error=False,
-        )
+def _ok(tool_use_id: str, payload: object) -> ToolResult:
+    return ToolResult(
+        tool_use_id=tool_use_id,
+        content=json.dumps(payload),
+        is_error=False,
+    )
 
 
 def _err(tool_use_id: str, message: str) -> ToolResult:

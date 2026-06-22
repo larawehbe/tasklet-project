@@ -15,6 +15,7 @@ CREATE TABLE users (
     id          INTEGER PRIMARY KEY,
     email       TEXT UNIQUE NOT NULL,
     name        TEXT NOT NULL,
+    is_admin    INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

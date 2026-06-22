@@ -27,8 +27,8 @@ from anthropic import Anthropic
 from pydantic import BaseModel
 
 from src.conversation import Conversation
-from src.models import AgentMessage, ToolResult, ToolUse
-from src.prompts import MODEL, SYSTEM_PROMPT
+from src.models import AgentMessage, ToolResult, ToolUse, User
+from src.prompts import MODEL, build_system_prompt
 from src.tools import TOOL_SCHEMAS, dispatch
 
 MAX_TOKENS = 1024
@@ -46,10 +46,15 @@ def run_turn(
     client: Anthropic,
     conn: sqlite3.Connection,
     conversation: Conversation,
+    user: User,
     user_input: str,
     on_tool_call: Optional[Callable[[ToolUse, ToolResult], None]] = None,
 ) -> AgentTurnResult:
     """Run one user turn from input through to the assistant's final text.
+
+    `user` is the authenticated User object from the caller. It is passed
+    directly to dispatch() so the agent loop never reads identity from the
+    conversation text or from LLM output.
 
     The conversation is mutated in place: every new message (user, assistant
     text, tool_use, tool_result) is appended and persisted as we go. Even if
@@ -63,7 +68,7 @@ def run_turn(
         response = client.messages.create(
             model=MODEL,
             max_tokens=MAX_TOKENS,
-            system=SYSTEM_PROMPT,
+            system=build_system_prompt(user.is_admin),
             tools=TOOL_SCHEMAS,
             messages=conversation.to_anthropic_messages(),
         )
@@ -95,7 +100,7 @@ def run_turn(
 
         for tu in tool_uses:
             tool_call_count += 1
-            tool_result = dispatch(conn, conversation.user_id, tu)
+            tool_result = dispatch(conn, user, tu)
             if on_tool_call is not None:
                 on_tool_call(tu, tool_result)
             conversation.append(AgentMessage(role="tool", tool_result=tool_result))

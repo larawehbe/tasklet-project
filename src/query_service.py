@@ -11,6 +11,13 @@ The hard rule: user_id is the FIRST required parameter on every function
 in this module. There is no overload that accepts only a ticket_id. This
 is intentional — making it impossible to accidentally write a query that
 crosses tenant boundaries is more important than any minor convenience.
+
+Admin access: both functions accept an optional is_admin flag. When True
+(set by the caller from the authenticated session, never from LLM input),
+the user_id scope is lifted and all tickets are visible. The default is
+False — least privilege. Admins have read-only cross-user access; write
+paths (create_ticket, update_ticket_status) are always scoped to user_id
+regardless of admin status.
 """
 
 import sqlite3
@@ -20,15 +27,28 @@ from src.models import QueryFilters, Ticket
 
 
 def list_tickets(
-    conn: sqlite3.Connection, user_id: int, filters: QueryFilters
+    conn: sqlite3.Connection,
+    user_id: int,
+    filters: QueryFilters,
+    is_admin: bool = False,
 ) -> list[Ticket]:
-    """Return all of user_id's tickets matching `filters`, newest first."""
+    """Return tickets matching `filters`, newest first.
+
+    When is_admin=False (the default), results are scoped to user_id.
+    When is_admin=True, results span all users — the caller is responsible
+    for ensuring this flag comes from the authenticated session, not from
+    any user-supplied or LLM-supplied input.
+    """
     sql_parts = [
         "SELECT id, user_id, title, description, category, priority, status, "
         "       created_at, updated_at "
-        "FROM tickets WHERE user_id = ?"
+        "FROM tickets WHERE 1=1"
     ]
-    params: list = [user_id]
+    params: list = []
+
+    if not is_admin:
+        sql_parts.append("AND user_id = ?")
+        params.append(user_id)
 
     if filters.status is not None:
         sql_parts.append("AND status = ?")
@@ -56,18 +76,33 @@ def list_tickets(
 
 
 def get_ticket_by_id(
-    conn: sqlite3.Connection, user_id: int, ticket_id: int
+    conn: sqlite3.Connection,
+    user_id: int,
+    ticket_id: int,
+    is_admin: bool = False,
 ) -> Optional[Ticket]:
-    """Return the ticket if owned by user_id, else None.
+    """Return the ticket if it exists and the caller is allowed to see it.
 
-    We deliberately do NOT distinguish "ticket does not exist" from "ticket
-    exists but belongs to another user" — both return None. Returning
-    different errors for the two cases would leak existence information.
+    When is_admin=False (the default): returns the ticket only if it is
+    owned by user_id, else None. We deliberately do NOT distinguish "ticket
+    does not exist" from "ticket exists but belongs to another user" — both
+    return None. Returning different errors for the two cases would leak
+    existence information.
+
+    When is_admin=True: returns any ticket by id, regardless of owner.
     """
-    row = conn.execute(
-        "SELECT id, user_id, title, description, category, priority, status, "
-        "       created_at, updated_at "
-        "FROM tickets WHERE id = ? AND user_id = ?",
-        (ticket_id, user_id),
-    ).fetchone()
+    if is_admin:
+        row = conn.execute(
+            "SELECT id, user_id, title, description, category, priority, status, "
+            "       created_at, updated_at "
+            "FROM tickets WHERE id = ?",
+            (ticket_id,),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT id, user_id, title, description, category, priority, status, "
+            "       created_at, updated_at "
+            "FROM tickets WHERE id = ? AND user_id = ?",
+            (ticket_id, user_id),
+        ).fetchone()
     return Ticket(**dict(row)) if row else None

@@ -20,7 +20,33 @@ prompt as well.
 MODEL = "claude-sonnet-4-6"
 
 
-SYSTEM_PROMPT = """You are the Tasklet support assistant.
+def build_system_prompt(is_admin: bool = False) -> str:
+    """Return the system prompt for the current session.
+
+    The only runtime decision is whether to include the admin paragraph.
+    Everything else is static. Keeping the prompt as close to a constant
+    as possible makes it easy to read and test.
+    """
+    return _SYSTEM_PROMPT_TEMPLATE.format(
+        ticket_scope=_ADMIN_SCOPE if is_admin else _USER_SCOPE
+    )
+
+
+_USER_SCOPE = (
+    "You do not see and cannot access other users' tickets. Every query is "
+    "automatically scoped to the current user."
+)
+
+_ADMIN_SCOPE = (
+    "You are logged in as an admin. list_tickets and get_ticket_by_id return "
+    "tickets from ALL users, not just the current user. When listing or looking "
+    "up tickets, make clear whose ticket each result belongs to (include the "
+    "user_id field). Admin status grants read-only visibility across all users — "
+    "you still cannot create tickets or update ticket status on behalf of another "
+    "user. Those operations remain scoped to the logged-in user only."
+)
+
+_SYSTEM_PROMPT_TEMPLATE = """You are the Tasklet support assistant.
 
 Tasklet is a B2B project management SaaS used by software teams to plan sprints, \
 track tickets, and run roadmaps. You help the currently logged-in user with two \
@@ -92,8 +118,7 @@ of these three tools. If the user asks for something like that, say plainly \
 that you cannot do it from this chat — do not say "I'll forward this" or \
 "I'll let the team know," because that would be misleading.
 
-You do not see and cannot access other users' tickets. Every query is \
-automatically scoped to the current user.
+{ticket_scope}
 
 # Tone
 

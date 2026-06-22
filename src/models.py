@@ -47,6 +47,7 @@ class User(BaseModel):
     id: int
     email: str
     name: str
+    is_admin: bool = False
 
 
 class TicketCreate(BaseModel):

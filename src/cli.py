@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from src.agent import run_turn
 from src.conversation import Conversation
 from src.db import get_connection, init_db
-from src.models import ToolResult, ToolUse
+from src.models import ToolResult, ToolUse, User
 
 load_dotenv()
 
@@ -32,7 +32,9 @@ def list_users() -> None:
     """Print every user so you know which --user-id to pass to chat."""
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT id, name, email FROM users ORDER BY id").fetchall()
+        rows = conn.execute(
+            "SELECT id, name, email, is_admin FROM users ORDER BY id"
+        ).fetchall()
     finally:
         conn.close()
 
@@ -40,10 +42,21 @@ def list_users() -> None:
         typer.echo("No users found. Run `support-agent init-db` first.")
         raise typer.Exit(1)
 
-    typer.echo(f"{'ID':<5} {'Name':<20} Email")
-    typer.echo("-" * 50)
+    typer.echo(f"{'ID':<5} {'Admin':<7} {'Name':<20} Email")
+    typer.echo("-" * 58)
     for row in rows:
-        typer.echo(f"{row['id']:<5} {row['name']:<20} {row['email']}")
+        admin_label = "yes" if row["is_admin"] else "no"
+        typer.echo(f"{row['id']:<5} {admin_label:<7} {row['name']:<20} {row['email']}")
+
+
+def _load_user(conn, user_id: int) -> User:
+    row = conn.execute(
+        "SELECT id, email, name, is_admin FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if row is None:
+        typer.echo(f"User {user_id} not found. Run `support-agent list-users` to see valid ids.")
+        raise typer.Exit(1)
+    return User(**dict(row))
 
 
 @app.command()
@@ -56,6 +69,8 @@ def chat(
     client = Anthropic()
     conn = get_connection()
 
+    user = _load_user(conn, user_id)
+
     conversation = (
         Conversation.new(conn, user_id)
         if new
@@ -66,6 +81,9 @@ def chat(
         typer.echo(f"Resuming conversation {conversation.id} ({len(conversation.messages)} messages).")
     else:
         typer.echo(f"New conversation {conversation.id}.")
+
+    if user.is_admin:
+        typer.echo("[Admin session — ticket queries span all users]")
 
     typer.echo("Type your message, or 'quit' / Ctrl-C to exit.\n")
 
@@ -82,6 +100,7 @@ def chat(
                 client,
                 conn,
                 conversation,
+                user,
                 user_input,
                 on_tool_call=on_tool_call if verbose else None,
             )

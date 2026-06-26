@@ -74,3 +74,34 @@ def seed_tickets(conn, seed_users):
             (uid, title, f"description for {title}", cat, pri, st, ts, ts),
         )
     conn.commit()
+
+
+@pytest.fixture
+def seed_transactions(conn, seed_users):
+    """A controlled set of transactions across both users.
+
+    User 1 has 6 transactions covering both types and several categories.
+    User 2 has 2 — included so security tests can prove cross-user isolation
+    even when values would otherwise match a filter.
+
+    Dates are explicit ISO 8601 strings so date-range tests can assert exact
+    behavior without depending on datetime('now').
+    """
+    rows = [
+        # user_id, amount,   type,      category,        merchant,        description,         date
+        (1,  8500.00, "income",  "salary",        "Acme Corp",     "Monthly salary",   "2026-04-01"),
+        (1,   120.50, "expense", "food",          "Trader Joe's",  "Groceries",        "2026-04-05"),
+        (1,    45.00, "expense", "shopping",      "Amazon",        "Books",            "2026-04-08"),
+        (1,    15.99, "expense", "entertainment", "Netflix",       "Subscription",     "2026-04-10"),
+        (1,  2400.00, "expense", "housing",       "City Rentals",  "Rent",             "2026-04-12"),
+        (1,   500.00, "income",  "other",         "Freelance Hub", "Side project",     "2026-04-15"),
+        (2,  9000.00, "income",  "salary",        "Globex Corp",   "Monthly salary",   "2026-04-01"),
+        (2,   200.00, "expense", "food",          "Whole Foods",   "Groceries",        "2026-04-07"),
+    ]
+    for uid, amount, txtype, cat, merchant, desc, date_str in rows:
+        conn.execute(
+            "INSERT INTO transactions (user_id, amount, type, category, merchant, description, date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (uid, amount, txtype, cat, merchant, desc, date_str),
+        )
+    conn.commit()

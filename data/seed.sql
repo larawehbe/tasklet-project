@@ -128,3 +128,100 @@ INSERT INTO tickets (user_id, title, description, category, priority, status, cr
     (5, 'Workspace export missing attachments', 'JSON export contains tickets but not the uploaded files.', 'bug_report', 'medium', 'waiting_on_customer', datetime('now', '-6 days'), datetime('now', '-6 days')),
     (5, 'Per-project Slack channel mapping', 'Right now all projects post to one Slack channel. Want one channel per project.', 'feature_request', 'high', 'open', datetime('now', '-1 days'), datetime('now', '-1 days')),
     (5, 'Cannot revoke service token from UI', 'Created an API token, the UI no longer shows it; cannot revoke without DB access.', 'bug_report', 'urgent', 'open', datetime('now'), datetime('now'));
+
+-- Transactions for Alice Chen (user 1) — software engineer
+-- Dates use date('now', '-N days') so the data always feels recent.
+INSERT INTO transactions (user_id, amount, type, category, merchant, description, date) VALUES
+    (1, 8500.00, 'income',  'salary',        'Northwind Inc',      'Monthly salary deposit',          date('now', '-2 days')),
+    (1,  120.45, 'expense', 'food',          'Trader Joe''s',      'Groceries',                       date('now', '-3 days')),
+    (1,   89.99, 'expense', 'shopping',      'Amazon',             'Desk lamp and cable organizer',   date('now', '-5 days')),
+    (1,   15.99, 'expense', 'entertainment', 'Netflix',            'Monthly streaming subscription',  date('now', '-6 days')),
+    (1,   22.50, 'expense', 'transport',     'Uber',               'Ride to airport',                 date('now', '-8 days')),
+    (1, 2400.00, 'expense', 'housing',       'Seattle Rentals LLC','Monthly rent',                    date('now', '-10 days')),
+    (1,   87.30, 'expense', 'utilities',     'City Light',         'Electric bill',                   date('now', '-12 days')),
+    (1,   44.99, 'expense', 'shopping',      'Amazon',             'Wireless keyboard',               date('now', '-14 days')),
+    (1,   95.20, 'expense', 'food',          'Trader Joe''s',      'Groceries',                       date('now', '-18 days')),
+    (1,  150.00, 'expense', 'healthcare',    'Group Health Clinic','Doctor co-pay',                   date('now', '-20 days')),
+    (1,   14.50, 'expense', 'transport',     'Uber',               'Ride home from dinner',           date('now', '-22 days')),
+    (1, 8500.00, 'income',  'salary',        'Northwind Inc',      'Monthly salary deposit',          date('now', '-32 days')),
+    (1,  110.60, 'expense', 'food',          'Trader Joe''s',      'Groceries',                       date('now', '-35 days')),
+    (1,   23.00, 'expense', 'entertainment', 'AMC Theaters',       'Movie tickets x2',                date('now', '-38 days')),
+    (1,   62.80, 'expense', 'utilities',     'Comcast',            'Internet bill',                   date('now', '-40 days')),
+    (1,  500.00, 'income',  'other',         'Fiverr',             'Freelance logo design project',   date('now', '-45 days')),
+    (1,  299.00, 'expense', 'shopping',      'Apple Store',        'iPad case and screen protector',  date('now', '-50 days')),
+    (1, 8500.00, 'income',  'salary',        'Northwind Inc',      'Monthly salary deposit',          date('now', '-62 days'));
+
+-- Transactions for Marcus Patel (user 2) — product manager
+INSERT INTO transactions (user_id, amount, type, category, merchant, description, date) VALUES
+    (2, 9200.00, 'income',  'salary',        'Globex Corp',        'Monthly salary deposit',          date('now', '-1 days')),
+    (2,  198.50, 'expense', 'food',          'Whole Foods',        'Groceries',                       date('now', '-4 days')),
+    (2,    6.75, 'expense', 'food',          'Starbucks',          'Coffee',                          date('now', '-4 days')),
+    (2,  449.00, 'expense', 'transport',     'Delta Airlines',     'Flight to Chicago — conference',  date('now', '-7 days')),
+    (2,  319.00, 'expense', 'housing',       'Marriott',           'Hotel 2 nights — conference',     date('now', '-7 days')),
+    (2,    9.99, 'expense', 'entertainment', 'Spotify',            'Music subscription',              date('now', '-9 days')),
+    (2,   45.00, 'expense', 'healthcare',    'Planet Fitness',     'Monthly gym membership',          date('now', '-11 days')),
+    (2,   85.40, 'expense', 'utilities',     'Comcast',            'Cable and internet',              date('now', '-14 days')),
+    (2,  175.00, 'expense', 'food',          'Whole Foods',        'Groceries',                       date('now', '-17 days')),
+    (2,    7.50, 'expense', 'food',          'Starbucks',          'Coffee and pastry',               date('now', '-19 days')),
+    (2, 9200.00, 'income',  'salary',        'Globex Corp',        'Monthly salary deposit',          date('now', '-31 days')),
+    (2,  112.00, 'expense', 'transport',     'Lyft',               'Rides this month',                date('now', '-33 days')),
+    (2,   55.00, 'expense', 'shopping',      'Target',             'Household supplies',              date('now', '-36 days')),
+    (2,  890.00, 'expense', 'housing',       'WeWork',             'Hot desk membership March',       date('now', '-40 days')),
+    (2,  235.00, 'expense', 'food',          'Whole Foods',        'Groceries',                       date('now', '-44 days')),
+    (2,    6.75, 'expense', 'food',          'Starbucks',          'Morning coffee',                  date('now', '-48 days')),
+    (2, 9200.00, 'income',  'salary',        'Globex Corp',        'Monthly salary deposit',          date('now', '-61 days'));
+
+-- Transactions for Sofia Rodriguez (user 3) — finance controller
+INSERT INTO transactions (user_id, amount, type, category, merchant, description, date) VALUES
+    (3, 7800.00, 'income',  'salary',        'Initech Financial',  'Monthly salary deposit',          date('now', '-2 days')),
+    (3,  245.80, 'expense', 'food',          'Costco',             'Groceries and household bulk',    date('now', '-5 days')),
+    (3,   78.30, 'expense', 'shopping',      'Target',             'Clothing and home goods',         date('now', '-7 days')),
+    (3,   24.00, 'expense', 'transport',     'Lyft',               'Ride to work',                    date('now', '-9 days')),
+    (3,   18.00, 'expense', 'entertainment', 'AMC Theaters',       'Movie tickets',                   date('now', '-11 days')),
+    (3, 1800.00, 'expense', 'housing',       'Bay Area Rentals',   'Monthly rent',                    date('now', '-13 days')),
+    (3,   95.00, 'expense', 'healthcare',    'Kaiser Permanente',  'Prescription refill',             date('now', '-16 days')),
+    (3,   52.40, 'expense', 'utilities',     'PG&E',               'Gas and electric',                date('now', '-18 days')),
+    (3,  190.00, 'expense', 'food',          'Costco',             'Monthly grocery run',             date('now', '-35 days')),
+    (3,   65.00, 'expense', 'shopping',      'Amazon',             'Office chair cushion',            date('now', '-38 days')),
+    (3, 7800.00, 'income',  'salary',        'Initech Financial',  'Monthly salary deposit',          date('now', '-32 days')),
+    (3,  300.00, 'income',  'transfer',      'Venmo',              'Reimbursement from roommate',     date('now', '-41 days')),
+    (3,   31.50, 'expense', 'entertainment', 'Hulu',               'Streaming subscription',          date('now', '-43 days')),
+    (3, 7800.00, 'income',  'salary',        'Initech Financial',  'Monthly salary deposit',          date('now', '-63 days'));
+
+-- Transactions for Yuki Tanaka (user 4) — DevOps engineer
+INSERT INTO transactions (user_id, amount, type, category, merchant, description, date) VALUES
+    (4, 11000.00,'income',  'salary',        'Umbrella Systems',   'Monthly salary deposit',          date('now', '-1 days')),
+    (4,   10.00, 'expense', 'shopping',      'GitHub',             'GitHub Pro subscription',         date('now', '-3 days')),
+    (4,  130.75, 'expense', 'food',          'Safeway',            'Groceries',                       date('now', '-6 days')),
+    (4,   50.00, 'expense', 'transport',     'BART',               'Monthly transit card top-up',     date('now', '-8 days')),
+    (4,  999.00, 'expense', 'shopping',      'Apple Store',        'iPad mini for testing',           date('now', '-10 days')),
+    (4,  105.60, 'expense', 'utilities',     'Comcast',            'Internet bill',                   date('now', '-13 days')),
+    (4, 2800.00, 'expense', 'housing',       'SF Properties LLC',  'Monthly rent',                    date('now', '-15 days')),
+    (4,   75.40, 'expense', 'food',          'Safeway',            'Weekly grocery run',               date('now', '-20 days')),
+    (4,   14.99, 'expense', 'entertainment', 'Disney+',            'Streaming subscription',          date('now', '-22 days')),
+    (4,   35.00, 'expense', 'healthcare',    'One Medical',        'Telehealth visit co-pay',         date('now', '-25 days')),
+    (4,  500.00, 'income',  'other',         'Hashnode',           'Technical article sponsor payout',date('now', '-28 days')),
+    (4, 11000.00,'income',  'salary',        'Umbrella Systems',   'Monthly salary deposit',          date('now', '-31 days')),
+    (4,  140.20, 'expense', 'food',          'Safeway',            'Groceries',                       date('now', '-37 days')),
+    (4,   10.00, 'expense', 'shopping',      'GitHub',             'GitHub Pro subscription',         date('now', '-33 days')),
+    (4,  120.00, 'expense', 'shopping',      'Amazon',             'Mechanical keyboard',             date('now', '-50 days')),
+    (4, 11000.00,'income',  'salary',        'Umbrella Systems',   'Monthly salary deposit',          date('now', '-61 days'));
+
+-- Transactions for David Müller (user 5) — operations generalist
+INSERT INTO transactions (user_id, amount, type, category, merchant, description, date) VALUES
+    (5, 7200.00, 'income',  'salary',        'Hooli GmbH',         'Monthly salary deposit',          date('now', '-2 days')),
+    (5,  320.00, 'expense', 'shopping',      'IKEA',               'Desk and shelving unit',          date('now', '-4 days')),
+    (5,   42.80, 'expense', 'food',          'DoorDash',           'Dinner delivery',                 date('now', '-5 days')),
+    (5,  185.00, 'expense', 'transport',     'BMW Financial',      'Car payment installment',         date('now', '-8 days')),
+    (5,   89.60, 'expense', 'food',          'Aldi',               'Groceries',                       date('now', '-10 days')),
+    (5, 1600.00, 'expense', 'housing',       'Berlin Wohnungen',   'Monthly rent',                    date('now', '-12 days')),
+    (5,   55.00, 'expense', 'utilities',     'Vattenfall',         'Electricity bill',                date('now', '-15 days')),
+    (5,   12.99, 'expense', 'entertainment', 'Netflix',            'Monthly subscription',            date('now', '-16 days')),
+    (5,   38.50, 'expense', 'food',          'DoorDash',           'Lunch delivery',                  date('now', '-19 days')),
+    (5,   78.40, 'expense', 'food',          'Aldi',               'Weekly groceries',                date('now', '-24 days')),
+    (5, 7200.00, 'income',  'salary',        'Hooli GmbH',         'Monthly salary deposit',          date('now', '-32 days')),
+    (5,  250.00, 'income',  'transfer',      'Wise',               'Reimbursement from client',       date('now', '-36 days')),
+    (5,  185.00, 'expense', 'transport',     'BMW Financial',      'Car payment installment',         date('now', '-38 days')),
+    (5,   95.00, 'expense', 'shopping',      'Amazon',             'Work from home supplies',         date('now', '-41 days')),
+    (5,   70.50, 'expense', 'food',          'Aldi',               'Groceries',                       date('now', '-45 days')),
+    (5, 7200.00, 'income',  'salary',        'Hooli GmbH',         'Monthly salary deposit',          date('now', '-62 days'));

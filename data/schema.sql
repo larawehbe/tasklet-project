@@ -61,3 +61,28 @@ CREATE TABLE messages (
 );
 
 CREATE INDEX idx_messages_conversation ON messages(conversation_id, id);
+
+-- Personal finance agent tables.
+-- amount is always positive; the type column distinguishes income from expense
+-- so arithmetic on amounts is unambiguous and CHECK constraints stay simple.
+-- date is stored as ISO 8601 text ('YYYY-MM-DD') — SQLite has no native DATE
+-- type, and text sorts correctly for date comparisons.
+
+CREATE TABLE transactions (
+    id          INTEGER PRIMARY KEY,
+    user_id     INTEGER NOT NULL,
+    amount      REAL NOT NULL CHECK (amount > 0),
+    type        TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+    category    TEXT NOT NULL CHECK (category IN (
+        'food', 'shopping', 'transport', 'entertainment', 'housing',
+        'healthcare', 'utilities', 'salary', 'transfer', 'other'
+    )),
+    merchant    TEXT NOT NULL,
+    description TEXT,
+    date        TEXT NOT NULL,       -- ISO 8601: 'YYYY-MM-DD'
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX idx_transactions_user_date ON transactions(user_id, date);
+CREATE INDEX idx_transactions_user_type ON transactions(user_id, type);

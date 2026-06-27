@@ -47,6 +47,7 @@ class User(BaseModel):
     id: int
     email: str
     name: str
+    is_admin: bool = False
 
 
 class TicketCreate(BaseModel):
@@ -82,6 +83,13 @@ class QueryFilters(BaseModel):
     created_after: Optional[datetime] = None
     created_before: Optional[datetime] = None
     limit: Optional[int] = Field(default=None, ge=1, le=500)
+
+
+class TicketStatusUpdate(BaseModel):
+    """Tool input for update_ticket_status. Both fields are required."""
+
+    ticket_id: int
+    new_status: Status
 
 
 class ToolUse(BaseModel):

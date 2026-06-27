@@ -35,7 +35,7 @@ from pydantic import BaseModel
 from src.agent import run_turn
 from src.conversation import Conversation
 from src.db import get_connection
-from src.models import Category, Priority, QueryFilters, Status
+from src.models import Category, Priority, QueryFilters, Status, User
 from src.query_service import list_tickets
 
 load_dotenv()
@@ -73,11 +73,20 @@ class ChatRequest(BaseModel):
     message: str
 
 
+def _get_user(conn, user_id: int) -> User:
+    row = conn.execute(
+        "SELECT id, email, name, is_admin FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    return User(**dict(row))
+
+
 @app.get("/api/users")
 def list_users():
     conn = get_connection()
     rows = conn.execute(
-        "SELECT id, email, name FROM users ORDER BY id"
+        "SELECT id, email, name, is_admin FROM users ORDER BY id"
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -90,6 +99,7 @@ def list_user_tickets(
     priority: str | None = None,
 ):
     conn = get_connection()
+    user = _get_user(conn, user_id)
 
     try:
         filters = QueryFilters(
@@ -100,18 +110,14 @@ def list_user_tickets(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    tickets = list_tickets(conn, user_id, filters)
+    tickets = list_tickets(conn, user_id, filters, is_admin=user.is_admin)
     return [t.model_dump(mode="json") for t in tickets]
 
 
 @app.get("/api/users/{user_id}/conversation")
 def get_conversation(user_id: int):
     conn = get_connection()
-    user = conn.execute(
-        "SELECT id FROM users WHERE id = ?", (user_id,)
-    ).fetchone()
-    if user is None:
-        raise HTTPException(status_code=404, detail="user not found")
+    _get_user(conn, user_id)  # 404 if not found
 
     conv = Conversation.load_or_create(conn, user_id)
     return {
@@ -124,17 +130,14 @@ def get_conversation(user_id: int):
 @app.post("/api/users/{user_id}/chat")
 def chat(user_id: int, body: ChatRequest):
     conn = get_connection()
-    user = conn.execute(
-        "SELECT id FROM users WHERE id = ?", (user_id,)
-    ).fetchone()
-    if user is None:
-        raise HTTPException(status_code=404, detail="user not found")
+    user = _get_user(conn, user_id)
 
     conversation = Conversation.load_or_create(conn, user_id)
     result = run_turn(
         client=_get_client(),
         conn=conn,
         conversation=conversation,
+        user=user,
         user_input=body.message,
     )
     return {
@@ -147,11 +150,7 @@ def chat(user_id: int, body: ChatRequest):
 @app.post("/api/users/{user_id}/conversation/reset")
 def reset_conversation(user_id: int):
     conn = get_connection()
-    user = conn.execute(
-        "SELECT id FROM users WHERE id = ?", (user_id,)
-    ).fetchone()
-    if user is None:
-        raise HTTPException(status_code=404, detail="user not found")
+    _get_user(conn, user_id)  # 404 if not found
 
     conv = Conversation.load_or_create(conn, user_id)
     conv.reset()

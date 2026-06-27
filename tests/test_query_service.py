@@ -136,3 +136,57 @@ def test_get_returns_none_for_other_users_ticket(conn, seed_tickets):
     ).fetchone()["id"]
     t = get_ticket_by_id(conn, user_id=1, ticket_id=user2_ticket_id)
     assert t is None
+
+
+# ---------- admin access ----------
+
+def test_admin_list_sees_all_users_tickets(conn, seed_tickets):
+    """ADMIN: is_admin=True lifts the user_id scope — all 7 fixture tickets are returned."""
+    results = list_tickets(conn, user_id=1, filters=QueryFilters(), is_admin=True)
+    assert len(results) == 7  # 5 user-1 + 2 user-2
+
+
+def test_admin_list_includes_other_users_tickets(conn, seed_tickets):
+    """ADMIN: the cross-user tickets appear in the result set."""
+    results = list_tickets(conn, user_id=1, filters=QueryFilters(), is_admin=True)
+    titles = {t.title for t in results}
+    assert "Other one" in titles
+    assert "Other two" in titles
+
+
+def test_admin_list_filters_still_apply(conn, seed_tickets):
+    """ADMIN: filters compose with admin scope, not replace it."""
+    results = list_tickets(
+        conn, user_id=1, filters=QueryFilters(category=Category.BUG_REPORT), is_admin=True
+    )
+    # user 1 has "Alpha bug" (bug_report); user 2 has "Other one" (bug_report)
+    assert len(results) == 2
+    titles = {t.title for t in results}
+    assert titles == {"Alpha bug", "Other one"}
+
+
+def test_admin_get_ticket_by_id_cross_user(conn, seed_tickets):
+    """ADMIN: is_admin=True allows fetching a ticket owned by a different user."""
+    user2_ticket_id = conn.execute(
+        "SELECT id FROM tickets WHERE user_id = 2 ORDER BY id LIMIT 1"
+    ).fetchone()["id"]
+    t = get_ticket_by_id(conn, user_id=1, ticket_id=user2_ticket_id, is_admin=True)
+    assert t is not None
+    assert t.user_id == 2
+
+
+def test_nonadmin_list_still_excludes_other_users(conn, seed_tickets):
+    """SECURITY: is_admin=False (the default) enforces isolation even when called explicitly."""
+    results = list_tickets(conn, user_id=1, filters=QueryFilters(), is_admin=False)
+    assert len(results) == 5
+    for t in results:
+        assert t.user_id == 1
+
+
+def test_nonadmin_get_still_returns_none_for_other_users_ticket(conn, seed_tickets):
+    """SECURITY: is_admin=False (the default) still hides other users' tickets."""
+    user2_ticket_id = conn.execute(
+        "SELECT id FROM tickets WHERE user_id = 2 ORDER BY id LIMIT 1"
+    ).fetchone()["id"]
+    t = get_ticket_by_id(conn, user_id=1, ticket_id=user2_ticket_id, is_admin=False)
+    assert t is None

@@ -28,11 +28,13 @@ from pydantic import ValidationError
 from src.models import (
     QueryFilters,
     TicketCreate,
+    TicketStatusUpdate,
     ToolResult,
     ToolUse,
+    User,
 )
 from src.query_service import get_ticket_by_id, list_tickets
-from src.ticket_service import create_ticket
+from src.ticket_service import TicketAccessDenied, create_ticket, update_ticket_status
 
 TOOL_SCHEMAS: list[dict] = [
     {
@@ -102,7 +104,7 @@ TOOL_SCHEMAS: list[dict] = [
             "type": "object",
             "properties": {
                 "status": {
-                    "type": "string",
+                    "type": "string",   
                     "enum": [
                         "open",
                         "in_progress",
@@ -158,6 +160,38 @@ TOOL_SCHEMAS: list[dict] = [
         },
     },
     {
+        "name": "update_ticket_status",
+        "description": (
+            "Change the status of one of the current user's tickets. "
+            "Use this only when the user explicitly asks to update a ticket's status "
+            "and has named a specific ticket id and a target status. "
+            "If either is missing or ambiguous, ask the user to clarify before calling. "
+            "Results are automatically scoped to the current user — you cannot update "
+            "another user's ticket."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {
+                    "type": "integer",
+                    "description": "The numeric id of the ticket to update.",
+                },
+                "new_status": {
+                    "type": "string",
+                    "enum": [
+                        "open",
+                        "in_progress",
+                        "waiting_on_customer",
+                        "resolved",
+                        "closed",
+                    ],
+                    "description": "The status to set on the ticket.",
+                },
+            },
+            "required": ["ticket_id", "new_status"],
+        },
+    },
+    {
         "name": "get_ticket_by_id",
         "description": (
             "Look up one specific ticket by its numeric id. "
@@ -180,14 +214,19 @@ TOOL_SCHEMAS: list[dict] = [
 
 
 def dispatch(
-    conn: sqlite3.Connection, user_id: int, tool_use: ToolUse
+    conn: sqlite3.Connection, user: User, tool_use: ToolUse
 ) -> ToolResult:
     """Execute the named tool and return a ToolResult to feed back to the LLM.
 
-    The user_id parameter is the authenticated user's id. This function NEVER
-    reads user_id from tool_use.input — even if the LLM tries to pass one,
-    it is ignored. Tests prove this.
+    `user` is the authenticated User object from the caller (CLI, Streamlit,
+    or API). This function NEVER reads user_id or is_admin from tool_use.input
+    — even if the LLM tries to pass them, they are ignored. Pydantic v2's
+    default extra="ignore" drops stray fields on model validation, and dispatch
+    never references the raw input for identity or privilege either way. Tests
+    in tests/test_tool_dispatch.py prove this.
     """
+    user_id = user.id
+    is_admin = user.is_admin
     name = tool_use.name
     raw_input = tool_use.input
 
@@ -199,7 +238,7 @@ def dispatch(
 
         if name == "list_tickets":
             filters = QueryFilters(**raw_input)
-            tickets = list_tickets(conn, user_id, filters)
+            tickets = list_tickets(conn, user_id, filters, is_admin=is_admin)
             return _ok(
                 tool_use.id,
                 {
@@ -215,7 +254,7 @@ def dispatch(
                     tool_use.id,
                     "ticket_id is required and must be an integer.",
                 )
-            ticket = get_ticket_by_id(conn, user_id, ticket_id)
+            ticket = get_ticket_by_id(conn, user_id, ticket_id, is_admin=is_admin)
             if ticket is None:
                 return _ok(
                     tool_use.id,
@@ -226,8 +265,29 @@ def dispatch(
                 {"found": True, "ticket": ticket.model_dump(mode="json")},
             )
 
+        if name == "update_ticket_status":
+            update = TicketStatusUpdate(**raw_input)
+            ticket = update_ticket_status(
+                conn, user_id, update.ticket_id, update.new_status
+            )
+            if ticket is None:
+                return _ok(
+                    tool_use.id,
+                    {"found": False, "ticket_id": update.ticket_id},
+                )
+            return _ok(
+                tool_use.id,
+                {"found": True, "ticket": ticket.model_dump(mode="json")},
+            )
+
         return _err(tool_use.id, f"Unknown tool: {name!r}")
 
+    except TicketAccessDenied as e:
+        return _err(
+            tool_use.id,
+            f"Access denied: you do not have permission to update ticket {e}. "
+            "You can only update your own tickets.",
+        )
     except ValidationError as e:
         # Hand the validation error back as a tool_result. On the next loop
         # iteration Claude reads this and (usually) corrects its input.

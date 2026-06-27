@@ -14,6 +14,10 @@ demo walkthrough in the README.
 
 from src import agent
 from src.conversation import Conversation
+from src.models import User
+
+# Regular (non-admin) user used across all agent loop tests.
+_USER_1 = User(id=1, email="test1@example.com", name="Test One", is_admin=False)
 
 
 class _Block:
@@ -56,7 +60,7 @@ def test_run_turn_returns_text_when_no_tool_call(conn, seed_users):
     )
     conv = Conversation.load_or_create(conn, user_id=1)
     result = agent.run_turn(
-        client=fake, conn=conn, conversation=conv, user_input="hello"
+        client=fake, conn=conn, conversation=conv, user=_USER_1, user_input="hello"
     )
     assert result.final_text == "Hi there. How can I help?"
     assert result.tool_call_count == 0
@@ -85,7 +89,7 @@ def test_run_turn_caps_tool_calls(conn, seed_tickets):
 
     conv = Conversation.load_or_create(conn, user_id=1)
     result = agent.run_turn(
-        client=fake, conn=conn, conversation=conv, user_input="loop forever"
+        client=fake, conn=conn, conversation=conv, user=_USER_1, user_input="loop forever"
     )
     assert result.tool_call_count == agent.MAX_TOOL_CALLS
     assert "maximum" in result.final_text.lower()
@@ -118,7 +122,7 @@ def test_run_turn_executes_one_tool_then_finishes(conn, seed_tickets):
 
     conv = Conversation.load_or_create(conn, user_id=1)
     result = agent.run_turn(
-        client=fake, conn=conn, conversation=conv, user_input="what's open?"
+        client=fake, conn=conn, conversation=conv, user=_USER_1, user_input="what's open?"
     )
     assert result.tool_call_count == 1
     assert result.final_text == "You have 1 open ticket: Alpha bug."

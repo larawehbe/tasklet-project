@@ -7,12 +7,12 @@
 -- fresh: re-running this script today produces tickets aged relative to
 -- today. updated_at is set equal to created_at on seed rows for simplicity.
 
-INSERT INTO users (id, email, name, created_at) VALUES
-    (1, 'alice@northwind.example',  'Alice Chen',       datetime('now', '-90 days')),
-    (2, 'marcus@globex.example',    'Marcus Patel',     datetime('now', '-75 days')),
-    (3, 'sofia@initech.example',    'Sofia Rodriguez',  datetime('now', '-60 days')),
-    (4, 'yuki@umbrella.example',    'Yuki Tanaka',      datetime('now', '-45 days')),
-    (5, 'david@hooli.example',      'David Müller',     datetime('now', '-30 days'));
+INSERT INTO users (id, email, name, is_admin, created_at) VALUES
+    (1, 'alice@northwind.example',  'Alice Chen',       1, datetime('now', '-90 days')),
+    (2, 'marcus@globex.example',    'Marcus Patel',     0, datetime('now', '-75 days')),
+    (3, 'sofia@initech.example',    'Sofia Rodriguez',  0, datetime('now', '-60 days')),
+    (4, 'yuki@umbrella.example',    'Yuki Tanaka',      0, datetime('now', '-45 days')),
+    (5, 'david@hooli.example',      'David Müller',     0, datetime('now', '-30 days'));
 
 -- Tickets for Alice Chen (user 1) — frontend dev, mostly bug reports
 INSERT INTO tickets (user_id, title, description, category, priority, status, created_at, updated_at) VALUES

@@ -1,4 +1,4 @@
-"""Tests for create_ticket — the only write path in the app."""
+"""Tests for ticket_service write paths: create_ticket and update_ticket_status."""
 
 from datetime import datetime
 
@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.models import Category, Priority, Status, TicketCreate
-from src.ticket_service import create_ticket
+from src.ticket_service import TicketAccessDenied, create_ticket, update_ticket_status
 
 
 def test_create_ticket_returns_populated_ticket(conn, seed_users):
@@ -98,3 +98,47 @@ def test_empty_title_rejected_by_pydantic():
             category=Category.BUG_REPORT,
             priority=Priority.LOW,
         )
+
+
+# ---------------------------------------------------------------------------
+# update_ticket_status
+# ---------------------------------------------------------------------------
+
+
+def _make_ticket(conn, user_id: int) -> int:
+    """Helper: insert a ticket for user_id and return its id."""
+    t = create_ticket(
+        conn,
+        user_id=user_id,
+        ticket=TicketCreate(
+            title="Test ticket",
+            description="For update tests.",
+            category=Category.BUG_REPORT,
+            priority=Priority.MEDIUM,
+        ),
+    )
+    return t.id
+
+
+def test_update_ticket_status_success(conn, seed_users):
+    ticket_id = _make_ticket(conn, user_id=1)
+
+    updated = update_ticket_status(conn, user_id=1, ticket_id=ticket_id, new_status=Status.RESOLVED)
+
+    assert updated is not None
+    assert updated.id == ticket_id
+    assert updated.user_id == 1
+    assert updated.status == Status.RESOLVED
+    assert isinstance(updated.updated_at, datetime)
+
+
+def test_update_ticket_status_does_not_affect_other_users_ticket(conn, seed_users):
+    """User 2 cannot update a ticket owned by user 1 — raises TicketAccessDenied."""
+    ticket_id = _make_ticket(conn, user_id=1)
+
+    with pytest.raises(TicketAccessDenied):
+        update_ticket_status(conn, user_id=2, ticket_id=ticket_id, new_status=Status.CLOSED)
+
+    # The original row must be unchanged.
+    row = conn.execute("SELECT status FROM tickets WHERE id = ?", (ticket_id,)).fetchone()
+    assert row["status"] == "open"

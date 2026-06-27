@@ -33,12 +33,17 @@ def conn():
 
 @pytest.fixture
 def seed_users(conn):
-    """Two test users — kept tiny and deterministic, unlike data/seed.sql."""
+    """Two test users — kept tiny and deterministic, unlike data/seed.sql.
+
+    User 1 is the admin; user 2 is a regular user. This mirrors the seed data
+    convention (Alice = admin) and lets security tests cover both paths without
+    a third fixture.
+    """
     conn.executemany(
-        "INSERT INTO users (id, email, name) VALUES (?, ?, ?)",
+        "INSERT INTO users (id, email, name, is_admin) VALUES (?, ?, ?, ?)",
         [
-            (1, "test1@example.com", "Test One"),
-            (2, "test2@example.com", "Test Two"),
+            (1, "test1@example.com", "Test One", 1),  # admin
+            (2, "test2@example.com", "Test Two", 0),
         ],
     )
     conn.commit()

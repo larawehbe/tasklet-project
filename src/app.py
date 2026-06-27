@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 from src.agent import run_turn
 from src.conversation import Conversation
 from src.db import get_connection
-from src.models import AgentMessage, QueryFilters, ToolResult, ToolUse
+from src.models import AgentMessage, QueryFilters, ToolResult, ToolUse, User
 from src.query_service import list_tickets
 
 load_dotenv()
@@ -67,7 +67,9 @@ def _render_message(msg: AgentMessage) -> None:
 
 # ---------- sidebar: user selection + live ticket table ----------
 
-users = conn.execute("SELECT id, name, email FROM users ORDER BY id").fetchall()
+users = conn.execute(
+    "SELECT id, name, email, is_admin FROM users ORDER BY id"
+).fetchall()
 if not users:
     st.error(
         "No seed users found. Run `uv run support-agent init-db` first, then "
@@ -77,9 +79,20 @@ if not users:
 
 with st.sidebar:
     st.title("Tasklet Support")
-    options = {f"{u['name']} (id {u['id']})": u["id"] for u in users}
+    options = {
+        f"{u['name']} (id {u['id']}){' [admin]' if u['is_admin'] else ''}": u["id"]
+        for u in users
+    }
     chosen_label = st.selectbox("Logged in as", list(options.keys()))
     user_id = options[chosen_label]
+
+    user_row = next(u for u in users if u["id"] == user_id)
+    current_user = User(
+        id=user_row["id"],
+        email=user_row["email"],
+        name=user_row["name"],
+        is_admin=bool(user_row["is_admin"]),
+    )
 
     if st.button("Reset conversation", use_container_width=True):
         if "conversation" in st.session_state:
@@ -87,8 +100,9 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-    st.subheader("Your tickets")
-    tickets = list_tickets(conn, user_id, QueryFilters())
+    ticket_header = "All tickets" if current_user.is_admin else "Your tickets"
+    st.subheader(ticket_header)
+    tickets = list_tickets(conn, user_id, QueryFilters(), is_admin=current_user.is_admin)
     if tickets:
         st.caption(f"{len(tickets)} total — newest first")
         st.dataframe(
@@ -117,6 +131,9 @@ if (
 ):
     st.session_state.conversation = Conversation.load_or_create(conn, user_id)
     st.session_state.active_user_id = user_id
+    st.session_state.current_user = current_user
+
+current_user = st.session_state.current_user
 
 conversation: Conversation = st.session_state.conversation
 
@@ -154,6 +171,7 @@ if prompt := st.chat_input("Ask the support agent..."):
                 client=client,
                 conn=conn,
                 conversation=conversation,
+                user=current_user,
                 user_input=prompt,
                 on_tool_call=_on_tool_call,
             )

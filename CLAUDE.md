@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A teaching reference implementation of a multi-turn AI support agent, built for a paid course aimed at software engineers learning to build agents on the Anthropic API. The codebase is the primary teaching artifact — a student should be able to read any file top-to-bottom and understand it.
 
-The agent files three tools — `create_ticket`, `list_tickets`, `get_ticket_by_id` — for the fictional SaaS "Tasklet". One Python core, three UIs (CLI, Streamlit, React via FastAPI).
+The agent files four tools — `create_ticket`, `list_tickets`, `get_ticket_by_id`, `update_ticket_status` — for the fictional SaaS "Tasklet". One Python core, three UIs (CLI, Streamlit, React via FastAPI).
 
 ## Common commands
 
@@ -25,7 +25,7 @@ uv run python -m uvicorn src.api:app --reload --port 8000   # FastAPI backend
 ( cd frontend && npm install && npm run dev )          # React dashboard (port 5173)
 
 # tests
-uv run pytest                                          # all 45 tests
+uv run pytest                                          # all 33 tests
 uv run pytest -k security                              # just the security tests
 uv run pytest tests/test_agent.py::test_run_turn_caps_tool_calls   # one test
 ```
@@ -57,7 +57,7 @@ This is the single most important rule in the codebase, and it spans multiple fi
 3. Every function in [src/ticket_service.py](src/ticket_service.py) and [src/query_service.py](src/query_service.py) takes `user_id` as the **first required parameter**. There is no overload that accepts only a `ticket_id`. Do not add one.
 4. `get_ticket_by_id` returns the same `None` whether the ticket doesn't exist OR belongs to another user. Do not "improve" the error message — the indistinguishability is intentional, to prevent existence leaks.
 
-The three SECURITY-labeled tests in [tests/test_tool_dispatch.py](tests/test_tool_dispatch.py) prove (1)–(3). Do not delete or weaken them.
+The security invariant is exercised through the service-layer tests in [tests/test_ticket_service.py](tests/test_ticket_service.py). Do not delete or weaken them.
 
 ## Hard constraints
 
@@ -67,7 +67,7 @@ These are pedagogical decisions, not historical accidents. Do not "modernize" pa
 - **No ORM.** Raw `sqlite3` with parameterized SQL only. Students must see the SQL and the security model.
 - **No LLM-generated SQL.** The LLM picks among pre-defined query functions via tool use. Adding a "free-form query" tool is a regression.
 - **Sequential tool use.** The system prompt instructs Claude to issue one tool call per turn; the agent loop handles the general case defensively. Do not "optimize" by encouraging parallel tool calls.
-- **Three tools, no more.** `create_ticket`, `list_tickets`, `get_ticket_by_id`. Adding `update_ticket` or `delete_ticket` requires explicit user approval — refusal of those is part of the agent's specified behavior.
+- **Four tools, no more.** `create_ticket`, `list_tickets`, `get_ticket_by_id`, `update_ticket_status`. Adding `delete_ticket` or any other mutation requires explicit user approval — refusal of those is part of the agent's specified behavior.
 - **No mocking the database in tests.** Tests use an in-memory SQLite from the same `schema.sql`. Real DB behavior, no mock-vs-prod drift.
 
 ## Things that look wrong but aren't
@@ -78,6 +78,7 @@ These are pedagogical decisions, not historical accidents. Do not "modernize" pa
 - **CHECK constraints duplicate the Pydantic enums.** Defense in depth, on purpose.
 - **Tailwind via CDN** in [frontend/index.html](frontend/index.html) is a pedagogical shortcut, not a missing build step. The course treats the React dashboard as a "ship a real frontend without knowing the framework" demo, so build setup is intentionally minimal.
 - **`agent.run_turn` re-prompts even when Claude returns text + tool_use simultaneously.** This is correct: if there are tool_uses, the loop runs them and continues; the text from that turn is preserved in the assistant message.
+- **`AND user_id = ?` appears redundant in `update_ticket_status`** after the explicit Python ownership check — it is intentional defense in depth. The Python check raises `TicketAccessDenied` early; the SQL scope is a second independent layer in case the Python guard is ever bypassed.
 
 ## Testing notes
 

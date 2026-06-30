@@ -69,3 +69,21 @@ services:
         sync: false
       - key: PYTHONUNBUFFERED
         value: "1"
+
+  # Finance agent Streamlit UI — "same loop, different tools" teaching
+  # comparison. Read-only transaction tools vs. the support agent's write tools.
+  # Deployed from finance-agent-persona branch (not yet merged to master).
+  - type: web
+    name: tasklet-finance-streamlit
+    runtime: python
+    plan: free
+    pythonVersion: "3.11"
+    branch: finance-agent-persona
+    buildCommand: "pip install -e ."
+    startCommand: "python scripts/init_db.py && streamlit run src/finance_app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableXsrfProtection false"
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
